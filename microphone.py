@@ -1,5 +1,5 @@
 import threading
-import pyaudio, numpy as np, matplotlib.pyplot as plt, speech_recognition as sr
+import pyaudio, numpy as np, matplotlib.pyplot as plt, speech_recognition as sr, audioop, math
 from matplotlib.animation import FuncAnimation
 class MicrophoneIntegration:
     def __init__(self):
@@ -46,6 +46,9 @@ class MicrophoneIntegration:
         def update_plot(frame):
             try:
                 data = self.stream.read(self.CHUNK, exception_on_overflow=False)
+                rms = audioop.rms(data, WIDTH)
+                db = 20 * math.log10(rms/(2^15-1)) if rms > 0 else db=-90
+                print(f"Volume (decibels): {db}")
                 np_data = np.frombuffer(data, dtype=np.int16)
                 channel_data = np_data[0::self.CHANNELS]
                 self.audio_buffer.append(data)
