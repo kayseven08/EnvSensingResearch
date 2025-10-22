@@ -1,9 +1,6 @@
 from picamera2 import Picamera2, Preview
 import cv2
 from ultralytics import YOLO
-import supervision as sv
-from PIL import Image
-from numpy import asarray
 
 cam = Picamera2()
 
@@ -18,12 +15,11 @@ cam.start()
 # model.export(format="ncnn")
 ncnn_model = YOLO('./yolo11n_ncnn_model')
 pose_model = YOLO('./yolo11n-pose_ncnn_model')
-bg_img = Image.open('black_image.jpeg')
-bg_image_array = asarray(bg_img)
+
 
 while True:
     frame = cam.capture_array()
-    processed_frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+    processed_frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
     # cv2.imshow("Camera Feed", processed_frame) 
     # results = ncnn_model(processed_frame)
     pose_results = pose_model(processed_frame)
