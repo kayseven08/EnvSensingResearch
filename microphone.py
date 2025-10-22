@@ -8,7 +8,7 @@ class MicrophoneIntegration:
         self.FORMAT = pyaudio.paInt16
         self.CHANNELS = 6
         self.RATE = 16000
-        self.INDEX = 0
+        self.INDEX = 1
         self.p = pyaudio.PyAudio()
         self.stream = self.p.open(format=self.p.get_format_from_width(self.WIDTH),
                         channels=self.CHANNELS,
@@ -46,16 +46,19 @@ class MicrophoneIntegration:
         def update_plot(frame):
             try:
                 data = self.stream.read(self.CHUNK, exception_on_overflow=False)
-                rms = audioop.rms(data, WIDTH)
-                db = 20 * math.log10(rms/(2^15-1)) if rms > 0 else db=-90
-                print(f"Volume (decibels): {db}")
+                rms = audioop.rms(data, self.WIDTH)
+                if rms > 0:
+                    db = 20 * math.log10(rms / 32767.0) 
+                else:
+                    db=-math.inf
+                print(f"Volume (decibels): {db} | rms: {rms}")
                 np_data = np.frombuffer(data, dtype=np.int16)
                 channel_data = np_data[0::self.CHANNELS]
                 self.audio_buffer.append(data)
                 if len(self.audio_buffer) * self.CHUNK / self.RATE > 3:
                     audio_data = b''.join(self.audio_buffer)
                     self.audio_buffer = []
-                    recognize_audio(audio_data)
+                    # recognize_audio(audio_data)
                 line.set_ydata(channel_data)
             except IOError:
                 print("audio overflowed; plotting might lag.")
