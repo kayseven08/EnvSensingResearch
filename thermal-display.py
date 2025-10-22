@@ -27,5 +27,3 @@ with dai.Pipeline(True) as pipeline:
         changed = False
         if key == ord("q"):
             break
-        if changed:
-            thermalConfIn.send(thermalConf)
