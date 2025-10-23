@@ -1,8 +1,6 @@
 import depthai as dai
 import cv2
 
-THERMAL_IMAGE_BRIGHTNESS_STEP = 10
-
 with dai.Pipeline(True) as pipeline:
     thermal = pipeline.create(dai.node.Thermal)
     thermalImgOut = thermal.color.createOutputQueue()
