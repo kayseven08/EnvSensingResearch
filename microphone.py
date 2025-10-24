@@ -18,8 +18,40 @@ class MicrophoneIntegration:
                         frames_per_buffer=self.CHUNK)
 
         self.r = sr.Recognizer()
+        self.fig, self.ax = plt.subplots()
+        self.x = np.arange(0, self.CHUNK)
+        self.line, = self.ax.plot(self.x, np.random.rand(self.CHUNK))
+        self.ax.set_ylim(-32768, 32767)
+        self.ax.set_xlim(0, self.CHUNK)
+        self.ax.set_ylabel("amplitude")
+        self.ax.set_xlabel("frames")
+        self.ax.set_title("mic adudio strean")
+        print("Recording")
+        self.channel_data_buffer = []
+        plt.show(block=False)
 
-
+    def extract(self):
+        data = self.stream.read(self.CHUNK, exception_on_overflow=False)
+        rms = audioop.rms(data, self.WIDTH)
+        return data, rms
+    
+    def process(self, data, rms):
+        np_data = np.frombuffer(data, dtype=np.int16)
+        channel_data = np_data[0::self.CHANNELS]
+        db =0
+        if rms > 0:
+            db = 20 * math.log10(rms / 32767.0) 
+        else:
+            db=-math.inf
+        return  channel_data, db
+    
+    def display(self, channel_data, db):
+        self.channel_data_buffer.append(channel_data)
+        print(f"Volume (decibels): {db}")
+        self.line.set_ydata(channel_data)
+        self.fig.canvas.draw()
+        self.fig.canvas.flush_events()
+        plt.pause(0.01)
 
     def waveform(self):
         fig, ax = plt.subplots()
@@ -74,6 +106,16 @@ class MicrophoneIntegration:
             self.stream.stop_stream()
             self.stream.close()
             self.p.terminate()
+    def close(self):
+        self.stream.stop_stream()
+        self.stream.close()
+        self.p.terminate()
 
-microphone_int = MicrophoneIntegration()
-microphone_int.waveform()
+if __name__ == '__main__':
+    mi = MicrophoneIntegration()
+
+    while True:
+        data, rms = mi.extract()
+        channel_data, db = mi.process(data, rms)
+        mi.display(channel_data, db)
+    mi.close()
