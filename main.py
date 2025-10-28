@@ -2,6 +2,7 @@ from microphone import MicrophoneIntegration as Microphone
 from optical_camera import Camera
 from thermal import Thermal
 import numpy as np, matplotlib.pyplot as plt, cv2
+from datetime import datetime, timedelta
 class Main:
     def __init__(self):
         self.mic = Microphone()
@@ -17,10 +18,12 @@ class Main:
         self.ax.set_title("mic adudio strean")
         self.channel_data_buffer = []
         plt.show(block=False)
+        self.times = []
     def extract(self):
         data, rms = self.mic.extract()
         cam_frame = self.cam.extract()
         thermal_frame = self.thermal.extract()
+        self.times.append(datetime.now())
         return data, rms, cam_frame, thermal_frame
 
     def process(self, data, rms, cam_frame, thermal_frame):
@@ -50,6 +53,8 @@ class Main:
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
         cv2.imshow("Camera/Thermal", cv2_concat)
+        print(f"Time of extraction: {self.times[-1]}")
+        print(f"latency: {(datetime.now() - self.times[-1]).total_seconds()}")
 
     def main(self):
         while True:
