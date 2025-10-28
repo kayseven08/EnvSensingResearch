@@ -6,7 +6,8 @@ class Thermal:
         self.pipeline = dai.Pipeline()
         self.device = None
         self.thermal = self.pipeline.create(dai.node.Thermal)
-        cv2.namedWindow("Color Map", cv2.WINDOW_NORMAL)
+        # cv2.namedWindow("Color Map", cv2.WINDOW_NORMAL)
+        self.start()
 
     def start(self):
         self.thermalImgOut = self.thermal.color.createOutputQueue()

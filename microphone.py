@@ -18,17 +18,17 @@ class MicrophoneIntegration:
                         frames_per_buffer=self.CHUNK)
 
         self.r = sr.Recognizer()
-        self.fig, self.ax = plt.subplots()
-        self.x = np.arange(0, self.CHUNK)
-        self.line, = self.ax.plot(self.x, np.random.rand(self.CHUNK))
-        self.ax.set_ylim(-32768, 32767)
-        self.ax.set_xlim(0, self.CHUNK)
-        self.ax.set_ylabel("amplitude")
-        self.ax.set_xlabel("frames")
-        self.ax.set_title("mic adudio strean")
-        print("Recording")
-        self.channel_data_buffer = []
-        plt.show(block=False)
+        # self.fig, self.ax = plt.subplots()
+        # self.x = np.arange(0, self.CHUNK)
+        # self.line, = self.ax.plot(self.x, np.random.rand(self.CHUNK))
+        # self.ax.set_ylim(-32768, 32767)
+        # self.ax.set_xlim(0, self.CHUNK)
+        # self.ax.set_ylabel("amplitude")
+        # self.ax.set_xlabel("frames")
+        # self.ax.set_title("mic adudio strean")
+        # print("Recording")
+        # self.channel_data_buffer = []
+        # plt.show(block=False)
 
     def extract(self):
         data = self.stream.read(self.CHUNK, exception_on_overflow=False)
