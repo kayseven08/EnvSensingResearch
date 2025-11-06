@@ -18,18 +18,19 @@ class MicrophoneIntegration:
                         frames_per_buffer=self.CHUNK)
 
         self.r = sr.Recognizer()
-        # self.fig, self.ax = plt.subplots()
-        # self.x = np.arange(0, self.CHUNK)
-        # self.line, = self.ax.plot(self.x, np.random.rand(self.CHUNK))
-        # self.ax.set_ylim(-32768, 32767)
-        # self.ax.set_xlim(0, self.CHUNK)
-        # self.ax.set_ylabel("amplitude")
-        # self.ax.set_xlabel("frames")
-        # self.ax.set_title("mic adudio strean")
-        # print("Recording")
-        # self.channel_data_buffer = []
-        # plt.show(block=False)
 
+    def initialize_local(self):
+        self.fig, self.ax = plt.subplots()
+        self.x = np.arange(0, self.CHUNK)
+        self.line, = self.ax.plot(self.x, np.random.rand(self.CHUNK))
+        self.ax.set_ylim(-32768, 32767)
+        self.ax.set_xlim(0, self.CHUNK)
+        self.ax.set_ylabel("amplitude")
+        self.ax.set_xlabel("frames")
+        self.ax.set_title("mic adudio strean")
+        print("Recording")
+        self.channel_data_buffer = []
+        plt.show(block=False)
     def extract(self):
         data = self.stream.read(self.CHUNK, exception_on_overflow=False)
         rms = audioop.rms(data, self.WIDTH)
@@ -113,7 +114,7 @@ class MicrophoneIntegration:
 
 if __name__ == '__main__':
     mi = MicrophoneIntegration()
-
+    mi.initialize_local()
     while True:
         data, rms = mi.extract()
         channel_data, db = mi.process(data, rms)

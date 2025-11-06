@@ -3,7 +3,7 @@ from optical_camera import Camera
 from thermal import Thermal
 import numpy as np, matplotlib.pyplot as plt, cv2
 from datetime import datetime, timedelta
-import threading, queue
+import threading, queue, time
 class Main:
     def __init__(self):
         self.mic_queue = queue.Queue(maxsize=1)
@@ -46,14 +46,22 @@ class Main:
         self.thermal = self.thermal_queue.get()
 
 
-        self.fig, self.ax = plt.subplots()
-        self.x = np.arange(0, self.mic.CHUNK)
-        self.line, = self.ax.plot(self.x, np.random.rand(self.mic.CHUNK))
-        self.ax.set_ylim(-32768, 32767)
-        self.ax.set_xlim(0, self.mic.CHUNK)
-        self.ax.set_ylabel("amplitude")
-        self.ax.set_xlabel("frames")
-        self.ax.set_title("mic adudio strean")
+        # self.fig, self.ax = plt.subplots()
+        # self.x = np.arange(0, self.mic.CHUNK)
+        # self.line, = self.ax.plot(self.x, np.random.rand(self.mic.CHUNK))
+        # self.ax.set_ylim(-32768, 32767)
+        # self.ax.set_xlim(0, self.mic.CHUNK)
+        # self.ax.set_ylabel("amplitude")
+        # self.ax.set_xlabel("frames")
+        # self.ax.set_title("mic adudio strean")
+
+        self.plot_height = 384
+        self.plot_width = 512
+        # Pre-calculate X-axis points for the plot
+        self.plot_x_points = np.linspace(0, self.plot_width - 1, num=self.mic.CHUNK).astype(np.int32)
+        # Pre-allocate a black frame to draw on (and for empty thermal)
+        self.empty_frame = np.zeros((self.plot_height, self.plot_width, 3), dtype=np.uint8)
+
         self.channel_data_buffer = []
         plt.show(block=False)
         self.times = []
@@ -62,7 +70,9 @@ class Main:
         self.rms_queue = queue.Queue(maxsize=1)
         self.cam_frame_queue = queue.Queue(maxsize=1)
         self.thermal_frame_queue = queue.Queue(maxsize=1)
-    
+
+        self.raw_data_all_queue = queue.Queue(maxsize=1)
+        self.processed_data_all_queue = queue.Queue(maxsize=1)
     def _run_threading(self, sensor_method, output_queue: queue.Queue):
         result = sensor_method()
         try:
@@ -101,6 +111,8 @@ class Main:
 
         return data, rms, cam_frame, thermal_frame
 
+
+
     def process(self, data, rms, cam_frame, thermal_frame):
         def cam_process_wrapper(frame):
             processed_frame = self.cam.process(frame)
@@ -119,87 +131,76 @@ class Main:
         
         return channel_data, db, processed_cam_frame, procssed_thermal_frame
 
+    def _extraction_loop(self):
+        while True:
+            try:
+                data, rms, cam_frame, thermal_frame = self.extract()
+                timestamp = datetime.now()
+                self.raw_data_all_queue.put((data, rms, cam_frame, thermal_frame, timestamp))
+            except Exception as e:
+                print(f"error in extraction loop: {e}")
+                time.sleep(.1)
+    
+    def _processing_loop(self):
+        while True:
+            try:
+                data, rms, cam_frame,thermal_frame, timestamp = self.raw_data_all_queue.get()
+                channel_data, db, processed_cam_frame, processed_thermal_frame = self.process(data, rms, cam_frame, thermal_frame)
+                self.processed_data_all_queue.put((channel_data, db, processed_cam_frame, processed_thermal_frame, timestamp))
+            except Exception as e:
+                print(f"error in extraction loop: {e}")
+                time.sleep(.1)
+
     def display(self, channel_data, db, processed_cam_frame, processed_thermal_frame):
-        # mic.display(channel_data, db)
-        # cam.display(processed_cam_frame)
-        # thermal.display(processed_thermal_frame)
-        # if(processed_thermal_frame.size)
-        cv2_concat = None
+        cv2_concat = cv2.hconcat([cam_frame, np.zeros_like(cam_frame)])
         if (processed_thermal_frame is not None ):
-            # print(processed_thermal_frame.shape)
-            # print(processed_cam_frame.shape)
-            cam_frame = cv2.resize(processed_cam_frame, (512, 384))
-            thermal_frame = cv2.resize(processed_thermal_frame, (512, 384))
+            cam_frame = cv2.resize(processed_cam_frame, (self.plot_width, self.plot_height))
+            thermal_frame = cv2.resize(processed_thermal_frame, (self.plot_width, self.plot_height))
             cv2_concat = cv2.hconcat([cam_frame, thermal_frame])
-        else:
-            cam_frame = cv2.resize(processed_cam_frame, (512, 384))
-            cv2_concat = cv2.hconcat([cam_frame, np.zeros_like(cam_frame)])
-        self.channel_data_buffer.append(channel_data)
-        print(f"Volume (decibels): {db}")
-        self.line.set_ydata(channel_data)
-        self.fig.canvas.draw()
-        self.fig.canvas.flush_events()
-        cv2.imshow("Camera/Thermal", cv2_concat)
-        print(f"Time of extraction: {self.times[-1]}")
-        print(f"latency: {(datetime.now() - self.times[-1]).total_seconds()}")
+        plot_img = self.empty_frame.copy() 
 
-    def add_display(self, channel_data, db, processed_cam_frame, processed_thermal_frame):
-        try:
-            self.final_data_queue.put(channel_data)
-            self.final_db_queue.put(db)
-            self.final_cam_frame_queue.put(processed_cam_frame)
-            self.final_thermal_frame_queue.put(processed_thermal_frame)
-        except Exception as e:
-            print(f"errored in adding to queues {e}")
-            pass
+        normalized_data = (channel_data + 32768) / 65536.0
+        y_points = (normalized_data * (self.plot_height - 1)).astype(np.int32)
+        y_points = self.plot_height - 1 - y_points
+        points = np.stack((self.plot_x_points, y_points), axis=-1)
+        cv2.polylines(plot_img, [points], isClosed=False, color=(0, 255, 0), thickness=1)
 
-    def main(self):
-        self.final_data_queue = queue.Queue(maxsize=1)
-        self.final_db_queue = queue.Queue(maxsize=1)
-        self.final_cam_frame_queue = queue.Queue(maxsize=1)
-        self.final_thermal_frame_queue = queue.Queue(maxsize=1)
+        cv2.putText(plot_img, f"Volume (dB): {db:.2f}", (10, 30), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
-        def mic_display():
-            print('started mic display')
-            while True:
-                channel_data = self.final_data_queue.get()
-                db = self.final_db_queue.get()
-                self.channel_data_buffer.append(channel_data)
-                print(f"Volume (decibels): {db}")
-                self.line.set_ydata(channel_data)
-                self.fig.canvas.draw()
-                self.fig.canvas.flush_events()
-        def cam_thermal_display():
-            print('started cam/thermal display')
-            while True:
-                processed_cam_frame = self.final_cam_frame_queue.get()
-                processed_thermal_frame = self.final_thermal_frame_queue.get()
-                cv2_concat = None
-                if (processed_thermal_frame is not None ):
-                    # print(processed_thermal_frame.shape)
-                    # print(processed_cam_frame.shape)
-                    cam_frame = cv2.resize(processed_cam_frame, (512, 384))
-                    thermal_frame = cv2.resize(processed_thermal_frame, (512, 384))
-                    cv2_concat = cv2.hconcat([cam_frame, thermal_frame])
-                else:
-                    cam_frame = cv2.resize(processed_cam_frame, (512, 384))
-                    cv2_concat = cv2.hconcat([cam_frame, np.zeros_like(cam_frame)])
-                cv2.imshow("Camera/Thermal", cv2_concat)
-                print(f"Time of extraction: {self.times[-1]}")
-                print(f"latency: {(datetime.now() - self.times[-1]).total_seconds()}")
+        cv2_concat = cv2.hconcat([cv2_concat, plot_img])
+        cv2.imshow("Camera/Thermal/Audio", cv2_concat)
 
-        self.mic_display_thread = threading.Thread(target=mic_display)
-        self.cam_thermal_display_thread = threading.Thread(target=cam_thermal_display)
+    def run_pipelines(self):
+        self.extractor_thread = threading.Thread(target=self._extraction_loop, daemon=True)
+        self.processor_thread = threading.Thread(target=self._processing_loop, daemon=True)
         
-        self.mic_display_thread.start()
-        self.cam_thermal_display_thread.start()
+        print("Starting pipeline threads...")
+        self.extractor_thread.start()
+        self.processor_thread.start()
+        print("Pipeline started.")
 
-
+        while True:
+            try:
+                channel_data, db, processed_cam_frame, thermal_frame, timestamp = self.processed_data_all_queue.get()
+                self.display(channel_data, db, processed_cam_frame, thermal_frame)
+                latency = (datetime.now() - timestamp).total_seconds()
+                print(f"Total end-to-end latency: {latency*1000:.2f} ms")
+            except queue.Empty:
+                pass
+            except KeyboardInterrupt:
+                print("stopping")
+                return
+            except Exception as e:
+                print(f"error in display loop: {e}")
+    def run(self):
         while True:
             data, rms, cam_frame, thermal_frame = self.extract()
             channel_data, db, processed_cam_frame, processed_thermal_frame = self.process(data, rms, cam_frame, thermal_frame)
-            self.add_display(channel_data, db, processed_cam_frame, processed_thermal_frame)
+            self.display(channel_data, db, processed_cam_frame, processed_thermal_frame)
+            latency = (datetime.now() - self.times[-1]).total_seconds()
+            print(f"Total end-to-end latency: {latency*1000:.2f} ms")
 
 if __name__ == "__main__":
     thing = Main()
-    thing.main()
+    thing.run_pipelines()
