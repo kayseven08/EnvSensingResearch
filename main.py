@@ -63,7 +63,7 @@ class Main:
         self.empty_frame = np.zeros((self.plot_height, self.plot_width, 3), dtype=np.uint8)
 
         self.channel_data_buffer = []
-        plt.show(block=False)
+        # plt.show(block=False)
         self.times = []
 
         self.data_queue = queue.Queue(maxsize=1)
@@ -152,9 +152,10 @@ class Main:
                 time.sleep(.1)
 
     def display(self, channel_data, db, processed_cam_frame, processed_thermal_frame):
-        cv2_concat = cv2.hconcat([cam_frame, np.zeros_like(cam_frame)])
+        cam_frame = cv2.resize(processed_cam_frame, (self.plot_width, self.plot_height))
+        cv2_concat = cam_frame.copy()
         if (processed_thermal_frame is not None ):
-            cam_frame = cv2.resize(processed_cam_frame, (self.plot_width, self.plot_height))
+            print('thermal frame exists')
             thermal_frame = cv2.resize(processed_thermal_frame, (self.plot_width, self.plot_height))
             cv2_concat = cv2.hconcat([cam_frame, thermal_frame])
         plot_img = self.empty_frame.copy() 
@@ -168,8 +169,9 @@ class Main:
         cv2.putText(plot_img, f"Volume (dB): {db:.2f}", (10, 30), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
-        cv2_concat = cv2.hconcat([cv2_concat, plot_img])
-        cv2.imshow("Camera/Thermal/Audio", cv2_concat)
+        cv2_hconcat = cv2.hconcat([cv2_concat, plot_img])
+        cv2.imshow("Camera/Thermal/Audio", cv2_hconcat)
+        print('displayed')
 
     def run_pipelines(self):
         self.extractor_thread = threading.Thread(target=self._extraction_loop, daemon=True)
@@ -186,6 +188,9 @@ class Main:
                 self.display(channel_data, db, processed_cam_frame, thermal_frame)
                 latency = (datetime.now() - timestamp).total_seconds()
                 print(f"Total end-to-end latency: {latency*1000:.2f} ms")
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    print("Stopping...")
+                    break
             except queue.Empty:
                 pass
             except KeyboardInterrupt:
