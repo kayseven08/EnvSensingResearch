@@ -6,6 +6,8 @@ from datetime import datetime, timedelta
 import threading, queue, time
 class Main:
     def __init__(self):
+        #Queues that allow for data to pass between threads
+        #setting up threads for initializing the sensors (makes it faster)
         self.mic_queue = queue.Queue(maxsize=1)
         self.cam_queue = queue.Queue(maxsize=1)
         self.thermal_queue = queue.Queue(maxsize=1)
@@ -45,25 +47,13 @@ class Main:
         self.cam = self.cam_queue.get()
         self.thermal = self.thermal_queue.get()
 
-
-        # self.fig, self.ax = plt.subplots()
-        # self.x = np.arange(0, self.mic.CHUNK)
-        # self.line, = self.ax.plot(self.x, np.random.rand(self.mic.CHUNK))
-        # self.ax.set_ylim(-32768, 32767)
-        # self.ax.set_xlim(0, self.mic.CHUNK)
-        # self.ax.set_ylabel("amplitude")
-        # self.ax.set_xlabel("frames")
-        # self.ax.set_title("mic adudio strean")
-
+        #Setting up configuration for the audio plotting in OpenCV
         self.plot_height = 384
         self.plot_width = 512
-        # Pre-calculate X-axis points for the plot
         self.plot_x_points = np.linspace(0, self.plot_width - 1, num=self.mic.CHUNK).astype(np.int32)
-        # Pre-allocate a black frame to draw on (and for empty thermal)
         self.empty_frame = np.zeros((self.plot_height, self.plot_width, 3), dtype=np.uint8)
 
         self.channel_data_buffer = []
-        # plt.show(block=False)
         self.times = []
 
         self.data_queue = queue.Queue(maxsize=1)
@@ -71,8 +61,11 @@ class Main:
         self.cam_frame_queue = queue.Queue(maxsize=1)
         self.thermal_frame_queue = queue.Queue(maxsize=1)
 
+        #Extracted data queue used in pipeline mode
         self.raw_data_all_queue = queue.Queue(maxsize=1)
+        #Processed data queue used in pipeline mode
         self.processed_data_all_queue = queue.Queue(maxsize=1)
+    #Performs the extraction methods of the sensors in a separate thread
     def _run_threading(self, sensor_method, output_queue: queue.Queue):
         result = sensor_method()
         try:
@@ -80,12 +73,13 @@ class Main:
         except queue.Full:
             pass
 
+    #Creates and runs the threads for extracting the data from the sensors
     def extract(self):
 
         cam_thread = threading.Thread(target=self._run_threading, 
-                                     args=(self.cam.extract, self.cam_frame_queue))
+                                        args=(self.cam.extract, self.cam_frame_queue))
         thermal_thread = threading.Thread(target=self._run_threading, 
-                                         args=(self.thermal.extract, self.thermal_frame_queue))
+                                        args=(self.thermal.extract, self.thermal_frame_queue))
         def mic_extract_wrapper():
             data, rms = self.mic.extract()
             try:
@@ -95,7 +89,7 @@ class Main:
                 pass
         mic_thread = threading.Thread(target=mic_extract_wrapper)
 
-        self.times.append(datetime.now())
+        self.times.append(datetime.now()) #gets current time used to calculate latency
         mic_thread.start()
         cam_thread.start()
         thermal_thread.start()
@@ -112,7 +106,7 @@ class Main:
         return data, rms, cam_frame, thermal_frame
 
 
-
+    #Creates and runs the threads for processing the data from the sensors
     def process(self, data, rms, cam_frame, thermal_frame):
         def cam_process_wrapper(frame):
             processed_frame = self.cam.process(frame)
@@ -124,13 +118,14 @@ class Main:
         cam_thread = threading.Thread(target=cam_process_wrapper, args=(cam_frame,))
 
         cam_thread.start()
-        channel_data, db  = self.mic.process(data, rms)
-        procssed_thermal_frame = self.thermal.process(thermal_frame)
+        channel_data, db  = self.mic.process(data, rms) #not run in parallel because it is quick
+        processed_thermal_frame = self.thermal.process(thermal_frame) #not run in parallel because it is quick
         cam_thread.join()
         processed_cam_frame = self.cam_frame_queue.get()
         
-        return channel_data, db, processed_cam_frame, procssed_thermal_frame
+        return channel_data, db, processed_cam_frame, processed_thermal_frame
 
+    #Extraction loop that runs on individual thread and pushes data to the raw_data_all_queue
     def _extraction_loop(self):
         while True:
             try:
@@ -140,7 +135,8 @@ class Main:
             except Exception as e:
                 print(f"error in extraction loop: {e}")
                 time.sleep(.1)
-    
+
+    #Processing loop that runs on individual thread and pushes data to the processed_data_all_queue
     def _processing_loop(self):
         while True:
             try:
@@ -150,25 +146,28 @@ class Main:
             except Exception as e:
                 print(f"error in extraction loop: {e}")
                 time.sleep(.1)
-
+    #Displays the data in OpenCV
     def display(self, channel_data, db, processed_cam_frame, processed_thermal_frame):
         cam_frame = cv2.resize(processed_cam_frame, (self.plot_width, self.plot_height))
         cv2_concat = cam_frame.copy()
-        if (processed_thermal_frame is not None ):
+        if (processed_thermal_frame is not None ): #used because thermal frame takes longer to initialize
             print('thermal frame exists')
             thermal_frame = cv2.resize(processed_thermal_frame, (self.plot_width, self.plot_height))
+            #Concatenates the thermal frame to the camera frame after it initializes
             cv2_concat = cv2.hconcat([cam_frame, thermal_frame])
-        plot_img = self.empty_frame.copy() 
 
+        plot_img = self.empty_frame.copy() 
+        #Normalizes the data and converts it to an integer for plotting
         normalized_data = (channel_data + 32768) / 65536.0
         y_points = (normalized_data * (self.plot_height - 1)).astype(np.int32)
         y_points = self.plot_height - 1 - y_points
         points = np.stack((self.plot_x_points, y_points), axis=-1)
+        #Draws the audio waveform on the plot
         cv2.polylines(plot_img, [points], isClosed=False, color=(0, 255, 0), thickness=1)
-
+        #Writes the volume to the plot
         cv2.putText(plot_img, f"Volume (dB): {db:.2f}", (10, 30), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-
+        #Concatenates the frames and plots them
         cv2_hconcat = cv2.hconcat([cv2_concat, plot_img])
         cv2.imshow("Camera/Thermal/Audio", cv2_hconcat)
         print('displayed')

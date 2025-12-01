@@ -2,6 +2,7 @@ import threading
 import pyaudio, numpy as np, matplotlib.pyplot as plt, speech_recognition as sr, audioop, math
 from matplotlib.animation import FuncAnimation
 class MicrophoneIntegration:
+    #Initializes pyaudio and audio stream as well as the configuration
     def __init__(self):
         self.CHUNK = 1024
         self.WIDTH = 2
@@ -18,7 +19,7 @@ class MicrophoneIntegration:
                         frames_per_buffer=self.CHUNK)
 
         self.r = sr.Recognizer()
-
+    #Runs to initialize the matplotlib plot when running just this file
     def initialize_local(self):
         self.fig, self.ax = plt.subplots()
         self.x = np.arange(0, self.CHUNK)
@@ -27,15 +28,16 @@ class MicrophoneIntegration:
         self.ax.set_xlim(0, self.CHUNK)
         self.ax.set_ylabel("amplitude")
         self.ax.set_xlabel("frames")
-        self.ax.set_title("mic adudio strean")
+        self.ax.set_title("mic audio stream")
         print("Recording")
         self.channel_data_buffer = []
         plt.show(block=False)
+    #Extracts the audio data from the stream
     def extract(self):
         data = self.stream.read(self.CHUNK, exception_on_overflow=False)
-        rms = audioop.rms(data, self.WIDTH)
+        rms = audioop.rms(data, self.WIDTH) #calculates the rms of the audio from the stream
         return data, rms
-    
+    #Processes the audio data and calculates a dB value
     def process(self, data, rms):
         np_data = np.frombuffer(data, dtype=np.int16)
         channel_data = np_data[0::self.CHANNELS]
@@ -45,7 +47,7 @@ class MicrophoneIntegration:
         else:
             db=-math.inf
         return  channel_data, db
-    
+    #Displays the audio data in matplotlib
     def display(self, channel_data, db):
         self.channel_data_buffer.append(channel_data)
         print(f"Volume (decibels): {db}")
@@ -53,7 +55,7 @@ class MicrophoneIntegration:
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
         plt.pause(0.01)
-
+    #Deprecated
     def waveform(self):
         fig, ax = plt.subplots()
         x = np.arange(0, self.CHUNK)
